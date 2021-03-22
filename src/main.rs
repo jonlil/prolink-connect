@@ -1,7 +1,5 @@
-use std::net::UdpSocket;
-
-mod devices;
 mod network;
+mod keepalive;
 
 fn main() -> std::io::Result<()> {
 

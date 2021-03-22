@@ -1,10 +1,8 @@
-#[allow(unused_imports)]
-
 use nom_derive::Nom;
 
 use nom::IResult;
 use nom::bytes::complete::tag;
-use std::net::{Ipv4Addr, UdpSocket};
+use std::net::Ipv4Addr;
 use nom::combinator::map_res;
 use std::convert::TryFrom;
 
@@ -109,24 +107,6 @@ pub struct KeepAliveMessage {
     pub msg_sub_type: MessageSubType,
     #[nom(Parse = "{ |i| MessageType::parse(i, msg_type) }")]
     pub msg_value: MessageType,
-}
-
-#[derive(Debug)]
-pub enum Error {
-    ParseError,
-    MissingHeaderError,
-}
-
-pub fn process_keep_alive_message(input: &[u8]) -> Result<KeepAliveMessage, Error> {
-    match UdpMagic::decode(&input) {
-        Ok((input, _)) => {
-            match KeepAliveMessage::parse(&input) {
-                Ok((_, message)) => Ok(message),
-                Err(_) => Err(Error::ParseError),
-            }
-        },
-        Err(_) => Err(Error::MissingHeaderError),
-    }
 }
 
 #[test]
