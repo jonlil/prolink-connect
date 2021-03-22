@@ -7,7 +7,7 @@ use nom::combinator::map_res;
 use std::convert::TryFrom;
 
 #[derive(Debug, PartialEq, Eq, Nom)]
-struct MacAddr {
+pub struct MacAddr {
     a: u8,
     b: u8,
     c: u8,
@@ -55,11 +55,11 @@ fn ip_address_parser(input: &[u8]) -> IResult<&[u8], Ipv4Addr> {
 
 #[derive(Debug, PartialEq, Eq, Nom)]
 pub struct Status {
-    player_number: u8,
+    pub player_number: u8,
     #[nom(SkipBefore(1))]
-    mac_address: MacAddr,
+    pub mac_address: MacAddr,
     #[nom(Parse(ip_address_parser))]
-    ip_addr: Ipv4Addr,
+    pub ip_addr: Ipv4Addr,
     device_count: u8,
 }
 
