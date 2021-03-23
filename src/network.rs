@@ -79,9 +79,9 @@ impl ProlinkNetwork {
                         if let Some(network) = find_ipv4_network_interface(&device.ip_address) {
                             // connect to a pioneer network
                             self.network_state.connected = true;
-                            self.network_state.network = Some(network);
+                            self.network_state.network = Some(network.ip_network);
 
-                            eprintln!("Connected to network: {:#?}", network);
+                            eprintln!("Connected to network: {:#?}", network.ip_network);
                         }
                     }
 
@@ -96,14 +96,23 @@ impl ProlinkNetwork {
     }
 }
 
-fn find_ipv4_network_interface(address: &Ipv4Addr) -> Option<Ipv4Network> {
+pub struct NetworkInterface {
+    pub ip_network: Ipv4Network,
+    pub mac: pnet::datalink::MacAddr,
+}
+
+fn find_ipv4_network_interface(address: &Ipv4Addr) -> Option<NetworkInterface> {
     interfaces()
         .iter()
+        .filter(|interface| interface.mac.is_some())
         .flat_map(|interface| {
             interface.ips.iter().filter_map(|ip| match ip {
-                IpNetwork::V4(ip) => Some(*ip),
+                IpNetwork::V4(ip) => Some(NetworkInterface {
+                    ip_network: *ip,
+                    mac: interface.mac.unwrap(),
+                }),
                 _ => None,
             })
         })
-        .find(|network: &Ipv4Network| network.contains(*address))
+        .find(|network: &NetworkInterface| network.ip_network.contains(*address))
 }
