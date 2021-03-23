@@ -1,8 +1,12 @@
-use std::{collections::HashMap, net::{Ipv4Addr, SocketAddr}, sync::mpsc::{Receiver, RecvError}};
-use pnet::datalink::interfaces;
 use ipnetwork::{IpNetwork, Ipv4Network};
+use pnet::datalink::interfaces;
+use std::{
+    collections::HashMap,
+    net::{Ipv4Addr, SocketAddr},
+    sync::mpsc::{Receiver, RecvError},
+};
 
-use crate::keepalive::{KeepAliveListener, Device};
+use crate::keepalive::{Device, KeepAliveListener};
 
 const ANNOUNCE_PORT: u16 = 50000;
 const STATUS_PORT: u16 = 50002;
@@ -73,7 +77,7 @@ impl ProlinkNetwork {
                 Ok((device, _peer)) => {
                     if self.network_state.connected == false {
                         if let Some(network) = find_ipv4_network_interface(&device.ip_address) {
-                        // connect to a pioneer network
+                            // connect to a pioneer network
                             self.network_state.connected = true;
                             self.network_state.network = Some(network);
 
@@ -84,7 +88,7 @@ impl ProlinkNetwork {
                     if self.device_manager.contains(&device) == false {
                         self.device_manager.insert(device);
                     }
-                },
+                }
                 Err(err) => eprintln!("{:?}", err),
             };
             std::thread::sleep(std::time::Duration::from_millis(250));
@@ -93,16 +97,13 @@ impl ProlinkNetwork {
 }
 
 fn find_ipv4_network_interface(address: &Ipv4Addr) -> Option<Ipv4Network> {
-    interfaces().iter()
+    interfaces()
+        .iter()
         .flat_map(|interface| {
-            interface.ips.iter()
-                .filter_map(|ip| {
-                    match ip {
-                        IpNetwork::V4(ip) => Some(*ip),
-                        _ => None,
-                    }
-                })
+            interface.ips.iter().filter_map(|ip| match ip {
+                IpNetwork::V4(ip) => Some(*ip),
+                _ => None,
+            })
         })
-    .find(|network: &Ipv4Network| network.contains(*address))
+        .find(|network: &Ipv4Network| network.contains(*address))
 }
-
