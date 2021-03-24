@@ -1,3 +1,4 @@
+use crate::network::NetworkInterface;
 use error::Error;
 use protocol::UdpMagic;
 use std::{
@@ -19,11 +20,12 @@ pub struct Device {
     pub device_type: protocol::DeviceType,
 }
 
-pub fn virtual_cdj(network: network::NetworkInterface) -> Device {
+pub fn virtual_cdj(network: NetworkInterface) -> Device {
     Device {
+        id: 5,
         name: "VirtualCDJ".to_string(),
         device_type: protocol::DeviceType::Cdj,
-        ip_address: network.ip_network.address(),
+        ip_address: network.ip_network.ip(),
         mac_addr: network.mac,
     }
 }

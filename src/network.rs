@@ -106,7 +106,7 @@ fn find_ipv4_network_interface(address: &Ipv4Addr) -> Option<NetworkInterface> {
         .iter()
         .filter(|interface| interface.mac.is_some())
         .flat_map(|interface| {
-            interface.ips.iter().filter_map(|ip| match ip {
+            interface.ips.iter().filter_map(move |ip| match ip {
                 IpNetwork::V4(ip) => Some(NetworkInterface {
                     ip_network: *ip,
                     mac: interface.mac.unwrap(),

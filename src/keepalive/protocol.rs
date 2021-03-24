@@ -1,20 +1,12 @@
 use nom_derive::Nom;
 
-use nom::IResult;
 use nom::bytes::complete::tag;
-use std::net::Ipv4Addr;
 use nom::combinator::map_res;
+use nom::count;
+use nom::IResult;
+pub use pnet::datalink::MacAddr;
 use std::convert::TryFrom;
-
-#[derive(Debug, PartialEq, Eq, Nom)]
-pub struct MacAddr {
-    a: u8,
-    b: u8,
-    c: u8,
-    d: u8,
-    e: u8,
-    f: u8,
-}
+use std::net::Ipv4Addr;
 
 #[allow(dead_code)]
 const UDP_MAGIC: [u8; 10] = [0x51, 0x73, 0x70, 0x74, 0x31, 0x57, 0x6d, 0x4a, 0x4f, 0x4c];
@@ -34,29 +26,37 @@ impl UdpMagic {
 pub enum MessageType {
     #[nom(Selector = "10")]
     Hello,
-    #[nom(Selector="4")]
+    #[nom(Selector = "4")]
     Number,
-    #[nom(Selector="0")]
+    #[nom(Selector = "0")]
     Mac,
-    #[nom(Selector="2")]
+    #[nom(Selector = "2")]
     Ip,
-    #[nom(Selector="6")]
+    #[nom(Selector = "6")]
     Status(Status),
-    #[nom(Selector="8")]
+    #[nom(Selector = "8")]
     Change,
 }
 
+fn mac_addr_parser(input: &[u8]) -> IResult<&[u8], MacAddr> {
+    let (input, a) = nom::number::complete::be_u8(input)?;
+    let (input, b) = nom::number::complete::be_u8(input)?;
+    let (input, c) = nom::number::complete::be_u8(input)?;
+    let (input, d) = nom::number::complete::be_u8(input)?;
+    let (input, e) = nom::number::complete::be_u8(input)?;
+    let (input, f) = nom::number::complete::be_u8(input)?;
+
+    Ok((input, MacAddr::new(a, b, c, d, e, f)))
+}
+
 fn ip_address_parser(input: &[u8]) -> IResult<&[u8], Ipv4Addr> {
-    map_res(
-        nom::number::complete::be_u32,
-        std::net::Ipv4Addr::try_from,
-    )(input)
+    map_res(nom::number::complete::be_u32, std::net::Ipv4Addr::try_from)(input)
 }
 
 #[derive(Debug, PartialEq, Eq, Nom)]
 pub struct Status {
     pub player_number: u8,
-    #[nom(SkipBefore(1))]
+    #[nom(SkipBefore(1), Parse(mac_addr_parser))]
     pub mac_address: MacAddr,
     #[nom(Parse(ip_address_parser))]
     pub ip_addr: Ipv4Addr,
@@ -84,13 +84,8 @@ pub enum MessageSubType {
 }
 
 fn model_name_parser(input: &[u8]) -> IResult<&[u8], String> {
-     match map_res(
-        nom::bytes::complete::take(20u8),
-        std::str::from_utf8,
-    )(input) {
-        Ok((input, data)) => {
-            Ok((input, data.trim_end_matches('\u{0}').to_string()))
-        },
+    match map_res(nom::bytes::complete::take(20u8), std::str::from_utf8)(input) {
+        Ok((input, data)) => Ok((input, data.trim_end_matches('\u{0}').to_string())),
         Err(err) => Err(err),
     }
 }
@@ -113,28 +108,31 @@ pub struct KeepAliveMessage {
 fn parse_status_package() {
     let input: &[u8] = &status_package()[10..];
 
-    assert_eq!(KeepAliveMessage::parse(&input), Ok((
-        &input[39..],
-        KeepAliveMessage {
-            msg_type: 6,
-            model_name: "XDJ-700".to_string(),
-            device_type: DeviceType::Cdj,
-            msg_sub_type: MessageSubType::Status,
-            msg_value: MessageType::Status(Status {
-                player_number: 2,
-                mac_address: MacAddr {
-                    a: 200,
-                    b: 61,
-                    c: 252,
-                    d: 4,
-                    e: 30,
-                    f: 196,
-                },
-                ip_addr: Ipv4Addr::new(192, 168, 10, 78),
-                device_count: 1,
-            }),
-        }
-    )));
+    assert_eq!(
+        KeepAliveMessage::parse(&input),
+        Ok((
+            &input[39..],
+            KeepAliveMessage {
+                msg_type: 6,
+                model_name: "XDJ-700".to_string(),
+                device_type: DeviceType::Cdj,
+                msg_sub_type: MessageSubType::Status,
+                msg_value: MessageType::Status(Status {
+                    player_number: 2,
+                    mac_address: MacAddr {
+                        a: 200,
+                        b: 61,
+                        c: 252,
+                        d: 4,
+                        e: 30,
+                        f: 196,
+                    },
+                    ip_addr: Ipv4Addr::new(192, 168, 10, 78),
+                    device_count: 1,
+                }),
+            }
+        ))
+    );
 }
 
 #[test]
@@ -143,16 +141,23 @@ fn it_identifies_prolink_header() {
     assert_eq!(UdpMagic::decode(&data).unwrap().1, UdpMagic);
     assert_eq!(
         UdpMagic::decode(&vec![82]),
-        Err(nom::Err::Error(
-            nom::error::Error {
-                input: &vec![82][..],
-                code: nom::error::ErrorKind::Tag,
-            },
-        )),
+        Err(nom::Err::Error(nom::error::Error {
+            input: &vec![82][..],
+            code: nom::error::ErrorKind::Tag,
+        },)),
     );
 }
 
 #[cfg(test)]
 fn status_package() -> Vec<u8> {
-    vec![81, 115, 112, 116, 49, 87, 109, 74, 79, 76, 6, 0, 88, 68, 74, 45, 55, 48, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 54, 2, 2, 200, 61, 252, 4, 30, 196, 192, 168, 10, 78, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    vec![
+        81, 115, 112, 116, 49, 87, 109, 74, 79, 76, 6, 0, 88, 68, 74, 45, 55, 48, 48, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 54, 2, 2, 200, 61, 252, 4, 30, 196, 192, 168, 10, 78,
+        1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ]
 }
