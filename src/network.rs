@@ -74,24 +74,29 @@ impl ProlinkNetwork {
     pub fn run(&mut self) {
         loop {
             match self.keepalive_manager.recv() {
-                Ok((device, _peer)) => {
-                    if self.network_state.connected == false {
-                        if let Some(network) = find_ipv4_network_interface(&device.ip_address) {
-                            // connect to a pioneer network
-                            self.network_state.connected = true;
-                            self.network_state.network = Some(network.ip_network);
-
-                            eprintln!("Connected to network: {:#?}", network.ip_network);
-                        }
-                    }
-
-                    if self.device_manager.contains(&device) == false {
-                        self.device_manager.insert(device);
-                    }
-                }
+                Ok((device, _peer)) => self.on_device(device),
                 Err(err) => eprintln!("{:?}", err),
             };
+
             std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+    }
+
+    fn on_device(&mut self, device: Device) {
+        if self.network_state.connected == false {
+            if self.network_state.connected == false {
+                if let Some(network) = find_ipv4_network_interface(&device.ip_address) {
+                    // connect to a pioneer network
+                    self.network_state.connected = true;
+                    self.network_state.network = Some(network.ip_network);
+
+                    eprintln!("Connected to network: {:#?}", network.ip_network);
+                }
+            }
+
+            if self.device_manager.contains(&device) == false {
+                self.device_manager.insert(device);
+            }
         }
     }
 }
