@@ -3,10 +3,11 @@ use pnet::datalink::interfaces;
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
-    sync::mpsc::{Receiver, RecvError},
+    sync::mpsc::{Receiver, TryRecvError},
 };
 
-use crate::keepalive::{Device, KeepAliveListener};
+use crate::keepalive::{virtual_cdj, Device, KeepAliveListener};
+use crate::status::StatusEventServer;
 
 const ANNOUNCE_PORT: u16 = 50000;
 const STATUS_PORT: u16 = 50002;
@@ -22,8 +23,24 @@ impl KeepAliveManager {
         })
     }
 
-    fn recv(&self) -> Result<(Device, SocketAddr), RecvError> {
-        self.rx.recv()
+    fn try_recv(&self) -> Result<(Device, SocketAddr), TryRecvError> {
+        self.rx.try_recv()
+    }
+}
+
+struct StatusManager {
+    rx: Receiver<()>,
+}
+
+impl StatusManager {
+    fn new() -> std::io::Result<Self> {
+        Ok(Self {
+            rx: StatusEventServer::run(("0.0.0.0", STATUS_PORT))?,
+        })
+    }
+
+    fn try_recv(&self) -> Result<(), TryRecvError> {
+        self.rx.try_recv()
     }
 }
 
@@ -32,11 +49,26 @@ pub struct NetworkState {
     network: Option<Ipv4Network>,
 }
 
+impl NetworkState {
+    fn new() -> Self {
+        Self {
+            connected: false,
+            network: None,
+        }
+    }
+}
+
 pub struct DeviceManager {
     pub devices: HashMap<u8, Device>,
 }
 
 impl DeviceManager {
+    fn new() -> Self {
+        Self {
+            devices: HashMap::new(),
+        }
+    }
+
     fn insert(&mut self, device: Device) {
         self.devices.insert(device.id, device);
     }
@@ -50,32 +82,37 @@ impl DeviceManager {
 pub struct ProlinkNetwork {
     device_manager: DeviceManager,
     keepalive_manager: KeepAliveManager,
+    status_manager: StatusManager,
     network_state: NetworkState,
+    vcdj: Option<Device>,
 }
 
 impl ProlinkNetwork {
     pub fn new() -> std::io::Result<Self> {
         let keepalive_manager = KeepAliveManager::new()?;
-        let mut device_manager = DeviceManager {
-            devices: HashMap::new(),
-        };
-        let mut network_state = NetworkState {
-            connected: false,
-            network: None,
-        };
+        let status_manager = StatusManager::new()?;
+        let device_manager = DeviceManager::new();
+        let network_state = NetworkState::new();
 
         Ok(Self {
             device_manager,
             keepalive_manager,
             network_state,
+            status_manager,
+            vcdj: None,
         })
     }
 
     pub fn run(&mut self) {
         loop {
-            match self.keepalive_manager.recv() {
+            match self.keepalive_manager.try_recv() {
                 Ok((device, _peer)) => self.on_device(device),
-                Err(err) => eprintln!("{:?}", err),
+                Err(_err) => {}
+            };
+
+            match self.status_manager.try_recv() {
+                Ok(_) => {}
+                Err(_err) => {}
             };
 
             std::thread::sleep(std::time::Duration::from_millis(250));
@@ -90,13 +127,15 @@ impl ProlinkNetwork {
                     self.network_state.connected = true;
                     self.network_state.network = Some(network.ip_network);
 
+                    // TODO: Implement announcement of virtual device
+                    self.vcdj = Some(virtual_cdj(&network));
                     eprintln!("Connected to network: {:#?}", network.ip_network);
                 }
             }
+        }
 
-            if self.device_manager.contains(&device) == false {
-                self.device_manager.insert(device);
-            }
+        if self.device_manager.contains(&device) == false {
+            self.device_manager.insert(device);
         }
     }
 }

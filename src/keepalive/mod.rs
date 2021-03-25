@@ -20,7 +20,7 @@ pub struct Device {
     pub device_type: protocol::DeviceType,
 }
 
-pub fn virtual_cdj(network: NetworkInterface) -> Device {
+pub fn virtual_cdj(network: &NetworkInterface) -> Device {
     Device {
         id: 5,
         name: "VirtualCDJ".to_string(),
@@ -45,7 +45,7 @@ impl KeepAliveListener {
 
     pub fn run<T: ToSocketAddrs>(
         address: T,
-    ) -> Result<(Receiver<(Device, SocketAddr)>), std::io::Error> {
+    ) -> Result<Receiver<(Device, SocketAddr)>, std::io::Error> {
         let (tx, rx) = std::sync::mpsc::channel();
         let socket = Self::bind(address)?;
         std::thread::spawn(move || loop {
